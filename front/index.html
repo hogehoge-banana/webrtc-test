@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>WebRTC 1 to 1 handshake</title>
+</head>
+<body>
+  <button type="button" onclick="startVideo();">Start Video!</button>
+  <button type="button" onclick="stopVideo();">Stop video</button>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <button type="button" onclick="connect();">Connect</button>
+  <button type="button" onclick="hangUp();">Hang Up</button>
+  <br />
+  <div>
+   <video id="local-video" autoplay style="width: 240px; height: 180px; border: 1px solid black;"></video>
+   <video id="remote-video" autoplay style="width: 240px; height: 180px; border: 1px solid black;"></video>
+  </div>
+
+  <p>
+   SDP to send:<br />
+   <textarea id="text-for-send-sdp" rows="5" cols="100" disabled="1">SDP to send</textarea>
+  </p>
+  <p>
+   SDP to receive:<br />
+   <textarea id="text-for-receive-sdp" rows="5" cols="100"></textarea><br />
+   <button type="button" onclick="onSDP();">Receive SDP</button>
+  </p>
+
+  <p>
+   ICE Candidate to send:<br />
+   <textarea id="text-for-send-ice" rows="5" cols="100" disabled="1">ICE Candidate to send</textarea>
+  </p>
+  <p>
+   ICE Candidates to receive:<br />
+   <textarea id="text-for-receive-ice" rows="5" cols="100"></textarea><br />
+   <button type="button" onclick="onICE();">Receive ICE Candidates</button>
+  </p>
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.0/jquery.min.js"></script>
+  <script type="text/javascript" src="socket.js"></script>
+  <script type="text/javascript" src="index.js"></script>
+</body>
+</html>
