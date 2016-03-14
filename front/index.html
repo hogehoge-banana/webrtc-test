@@ -4,15 +4,14 @@
   <title>WebRTC 1 to 1 handshake</title>
 </head>
 <body>
-  <button type="button" onclick="startVideo();">Start Video!</button>
   <button type="button" onclick="stopVideo();">Stop video</button>
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <button type="button" onclick="connect();">Connect</button>
+  <button type="button" id="connect">Connect</button>
   <button type="button" onclick="hangUp();">Hang Up</button>
   <br />
   <div>
-   <video id="local-video" autoplay style="width: 240px; height: 180px; border: 1px solid black;"></video>
-   <video id="remote-video" autoplay style="width: 240px; height: 180px; border: 1px solid black;"></video>
+    <video id="remote-video" autoplay style="width: 480px; height: 180px; border: 1px solid black;"></video>
+    <video id="local-video" autoplay style="width: 240px; height: 180px; border: 1px solid black;"></video>
   </div>
 
   <p>

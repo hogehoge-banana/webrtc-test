@@ -10,11 +10,6 @@
 
     ws.onopen = function (evt){
       console.log("on open");
-      var message = {
-        Type: 'pork',
-        Msg: 'Yo!'
-      };
-//      self.send(message.Type, message);
     };
 
     ws.onclose = function (evt){
@@ -24,8 +19,10 @@
     ws.onmessage = function(evt) {
       var msg = eval("(" + evt.data + ")");
       var type = msg.Type;
+
       if (type === 'connected') {
         self.channel = msg.Channel;
+        cb(type)
       } else if (self.channel !== msg.Channel) {
         cb(type, msg.Msg)
       }
