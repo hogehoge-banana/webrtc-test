@@ -15,13 +15,18 @@ type Connection struct {
 	sendChannel chan Message
 }
 
-func NewConnection(conn *websocket.Conn) *Connection {
+func NewConnection(ws *websocket.Conn) *Connection {
 	channel := uuid.NewV4().String()
   connection := &Connection{
     Channel: channel,
-    Conn: conn,
+    Conn: ws,
     sendChannel: make(chan Message)}
   go channelHandler(connection)
+  msg := Message{
+    Type: TYPE_CONNECTED,
+    Msg: channel}
+  connection.SendMessage(msg, connection)
+
   return connection
 }
 
@@ -39,21 +44,11 @@ func (self *Connection) EnterRoom(roomname string) {
 func (self *Connection) LeaveRoom(roomname string) {
   self.Room = ""
 }
-func (self *Connection) isJoiningRoom(targetRoom string) bool {
+func (self *Connection) IsJoiningRoom(targetRoom string) bool {
   return self.Room == targetRoom
 }
 
-func (self *Connection) SendMessage(msg Message) {
+func (self *Connection) SendMessage(msg Message, from *Connection) {
+  msg.From = from.Channel
   self.sendChannel <- msg
-}
-
-func (self *Connection) Unicast(msgType, msg string, from *Connection) {
-  message := Message{
-    DestType: DestTypeUnicast,
-    Dest: self.Channel,
-    Type: msgType,
-    Msg: msg,
-    From: from.Channel,
-  }
-  self.SendMessage(message)
 }

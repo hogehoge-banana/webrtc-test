@@ -1,6 +1,5 @@
 // web rtc test
-(function(){
-
+(function(global){
 
   var localVideo = document.getElementById('local-video');
   var remoteVideo = document.getElementById('remote-video');
@@ -18,60 +17,59 @@
   var CR = String.fromCharCode(13);
   var myChannel = null;
 
+  var connections = {}; // key: channel, value: connection
+
   // initialize websocket
   var url = "wss://" + location.host + "/ws";
   var ws = new Socket(url, function(type, msg) {
-    if (type === 'connected') {
-      var roomname = getRoomName();
-      ws.send('enter', roomname);
-    } else {
-      var data = eval("(" +msg + ')');
-      if (type === 'offer') {
-        console.log("Received offer");
-        onOffer(data);
-      } else if (type === 'answer' && peerStarted) {
-        console.log('Received answer, settinng answer SDP');
-        onAnswer(data);
-      } else if (type === 'candidate' && peerStarted) {
-        console.log('Received ICE candidate...');
-        onCandidate(data);
-      } else if (type === 'user dissconnected' && peerStarted) {
-        console.log("user disconnected");
-        stop();
-      }
+
+    console.log('received type:' + type)
+
+    if (type === 'offer') {
+      onOffer(msg);
+    } else if (type === 'answer') {
+      onAnswer(msg);
+    } else if (type === 'candidate') {
+      onCandidate(msg);
+    } else if (type === 'user dissconnected') {
+      stop();
+    } else if (type === 'enter') {
+      sendOffer(msg);
+    } else if (type === 'leave') {
+      onLeave(msg);
     }
   });
 
-
-
   // ---- UI ----
-  $('#connect').click(function(){
-    connect();
-  });
   //
   // start local video
   //
   function startVideo() {
-    navigator.webkitGetUserMedia(
-      {video: true, audio: true},
-      function (stream) { // success
-        localStream = stream;
-        localVideo.src = window.URL.createObjectURL(stream);
-        localVideo.play();
-        localVideo.volume = 0;
-      },
-      function (error) { // error
-        console.error('An error occurred: [CODE ' + error.code + ']');
-        console.error(error.message);
-        return;
-      }
-    );
+    return new Promise(function (resolve, reject) {
+      navigator.webkitGetUserMedia(
+        {video: true, audio: true},
+        function (stream) { // success
+          localStream = stream;
+          localVideo.src = window.URL.createObjectURL(stream);
+          localVideo.play();
+          localVideo.volume = 0;
+          console.log('localStream ready')
+          resolve();
+        },
+        function (error) { // error
+          console.error('An error occurred: [CODE ' + error.code + ']');
+          console.error(error.message);
+          reject();
+        }
+      );
+    });
   }
 
   // stop local video
   function stopVideo() {
     localVideo.src = "";
     localStream.stop();
+    localStream = null;
   }
 
   function hangUp() {
@@ -84,21 +82,14 @@
   // -- start flow --
 
   // start the connection upon user request
-  function connect() {
-    if (!peerStarted && localStream) {
-      sendOffer();
-      peerStarted = true;
-    } else {
-      alert("Local stream not running yet - try again.");
-    }
-  }
-  // send offer
-  function sendOffer() {
-    peerConnection = prepareNewConnection();
-    peerConnection.createOffer(function (sessionDescription) { // in case of success
-      peerConnection.setLocalDescription(sessionDescription);
-      sendSDP(sessionDescription);
-    }, function () { // in case of error
+  function sendOffer(data) {
+    var conn = prepareNewConnection(data.From);
+    conn.createOffer(function (sessionDescription) {
+      // in case of success
+      conn.peer.setLocalDescription(sessionDescription);
+      sendSDP(data.From, sessionDescription);
+    }, function () {
+      // in case of error
       console.log("Create Offer failed");
     }, mediaConstraints);
   }
@@ -107,38 +98,27 @@
 
   // -- on offer received flow --
 
-  function onOffer(evt) {
-    setOffer(evt);
-    sendAnswer(evt);
-    peerStarted = true;
+  function onOffer(msg) {
+    var sdp = JSON.parse(msg.Msg);
+    var connection = prepareNewConnection(msg.From);
+    connection.peer.setRemoteDescription(new RTCSessionDescription(sdp));
+    addConnection(connection);
+    sendAnswer(msg);
   }
 
-  function setOffer(evt) {
-    if (peerConnection) {
-      console.error('peerConnection alreay exist!');
-      return;
-    }
-    peerConnection = prepareNewConnection();
-    peerConnection.setRemoteDescription(new RTCSessionDescription(evt));
-  }
-
-  function sendCandidate(candidate) {
+  function sendCandidate(id, candidate) {
     var text = JSON.stringify(candidate);
-    console.log("---sending candidate text ---");
     textForSendICE.value = (textForSendICE.value + CR + iceSeparator + CR + text + CR);
     textForSendICE.scrollTop = textForSendICE.scrollHeight;
-    ws.send(candidate.type, candidate)
+    ws.unicast(id, candidate.type, candidate)
   }
 
   function sendAnswer(evt) {
-    console.log('sending Answer. Creating remote session description...' );
-    if (!peerConnection) {
-      console.error('peerConnection NOT exist!');
-      return;
-    }
-    peerConnection.createAnswer(function (sessionDescription) { // in case of success
-      peerConnection.setLocalDescription(sessionDescription);
-      sendSDP(sessionDescription);
+    var conn = getConnection(evt.From)
+    var peer = conn.peer;
+    peer.createAnswer(function (sessionDescription) { // in case of success
+      peer.setLocalDescription(sessionDescription);
+      sendSDP(evt.From, sessionDescription);
     }, function () { // in case of error
       console.log("Create Answer failed");
     }, mediaConstraints);
@@ -146,25 +126,26 @@
 
   // ---- on answer ----
   function onAnswer(evt) {
-    console.log("Received Answer...");
-    setAnswer(evt);
+    var data = eval("(" + evt.Msg + ')');
+
+    var conn = getConnection(evt.From);
+    conn.peer.setRemoteDescription(new RTCSessionDescription(data));
   }
-  function setAnswer(evt) {
-    if (! peerConnection) {
-      console.error('peerConnection NOT exist!');
-      return;
-    }
-    peerConnection.setRemoteDescription(new RTCSessionDescription(evt));
+
+  // ---- on leave message ----
+
+  function onLeave(msg) {
+    console.log('remove connection:' + msg.From)
+    removeConnection(msg.From)
+    $('#' + msg.From).remove();
   }
 
   // ----  utility ----
 
-  function sendSDP(sdp) {
+  function sendSDP(id, sdp) {
     var text = JSON.stringify(sdp);
-    console.log("---sending sdp text ---");
     textForSendSDP.value = text;
-    // send oover websocket
-    ws.send(sdp.type, sdp)
+    ws.unicast(id, sdp.type, sdp)
   }
 
 
@@ -201,55 +182,68 @@
     textToReceiveICE.value ="";
   }
 
-  function onCandidate(evt) {
-    var candidate = new RTCIceCandidate({sdpMLineIndex:evt.sdpMLineIndex, sdpMid:evt.sdpMid, candidate:evt.candidate});
-    console.log("Received Candidate...");
-    peerConnection.addIceCandidate(candidate);
+  function onCandidate(msg) {
+    var evt = JSON.parse(msg.Msg);
+    var conn = getConnection(msg.From);
+
+    var candidate = new RTCIceCandidate({
+      sdpMLineIndex:evt.sdpMLineIndex,
+      sdpMid:evt.sdpMid,
+      candidate:evt.candidate});
+    conn.peer.addIceCandidate(candidate);
   }
 
   // ---------------------- connection handling -----------------------
-  function prepareNewConnection() {
+  function prepareNewConnection(id) {
+    var connection = new Connection(id);
+    addConnection(connection);
+
     var pc_config = {"iceServers":[]};
     var peer = null;
-
-    // when remote adds a stream, hand it on to the local video element
-    function onRemoteStreamAdded(event) {
-      console.log("Added remote stream");
-      remoteVideo.src = window.URL.createObjectURL(event.stream);
-    }
-
-    // when remote removes a stream, remove it from the local video element
-    function onRemoteStreamRemoved(event) {
-      console.log("Remove remote stream");
-      remoteVideo.src = "";
-    }
 
     try {
       peer = new webkitRTCPeerConnection(pc_config);
       // send any ice candidates to the other peer
       peer.onicecandidate = function (evt) {
         if (evt.candidate) {
-          sendCandidate({
+          console.log('on candidate');
+          sendCandidate(connection.id, {
             type: "candidate",
             sdpMLineIndex: evt.candidate.sdpMLineIndex,
             sdpMid: evt.candidate.sdpMid,
             candidate: evt.candidate.candidate
           });
         } else {
-          console.log("End of candidates. ------------------- phase=" + evt.eventPhase);
+          console.log("candidate end. ------- phase=" + evt.eventPhase);
+          connection.ready = true;
         }
       };
 
-      console.log('Adding local stream...');
       peer.addStream(localStream);
 
-      peer.addEventListener("addstream", onRemoteStreamAdded, false);
-      peer.addEventListener("removestream", onRemoteStreamRemoved, false);
+      peer.addEventListener("addstream", function(event){
+        console.log("Added remote stream");
+        var $video = $('<video class="remote-video" autoplay></video>');
+        $video.attr('id', id);
+        $("#remote-videos").append($video);
+        $video.get(0).src = window.URL.createObjectURL(event.stream);
+      }, false);
+
+      peer.addEventListener("removestream", function(event){
+        // when remote removes a stream, remove it from the local video element
+        $('#' + id).remove();
+      }, false);
+
+      connection.peer = peer;
 
     } catch (e) {
       console.log("Failed to create peerConnection, exception: " + e.message);
     }
-    return peer;
+    return connection;
+  }
+
+  function isLocalStreamReady() {
+    return localStream != null;
   }
 
 
@@ -257,12 +251,33 @@
     var url   = location.href;
     urls    = url.split("?");
     if (1 < urls.length && urls[1]) {
-      return urls[1]
+      return urls[1];
     } else {
-      return 'default'
+      room = prompt('ルーム名を入力してください', 'general');
+      location.search = room;
+      return room;
     }
   }
 
-  startVideo();
+  function addConnection(conn) {
+    connections[conn.id] = conn;
+  }
+  function removeConnection(connId) {
+    delete connections[connId];
+  }
 
-})();
+  function getConnection(id) {
+    return connections[id];
+  }
+
+  function enterRoom(){
+    return ws.connect().then(function(){
+      var roomname = getRoomName();
+      ws.enter(roomname);
+    });
+  }
+
+  startVideo().then(function(){
+    enterRoom();
+  });
+})(window);

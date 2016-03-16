@@ -3,7 +3,6 @@ package signaling
 import (
 	// built in
 	"fmt"
-	//	"io"
 	"net/http"
 	// add on
 	"golang.org/x/net/websocket"
@@ -11,7 +10,7 @@ import (
 
 const (
 	SERVE_WS = ":8092"
-  GLOBALROOM = ":global"
+  TYPE_CONNECTED = "connected"
   TYPE_ENTER = "enter"
   TYPE_LEAVE = "leave"
 )
@@ -32,57 +31,58 @@ func Run() {
 func wsHandler(ws *websocket.Conn) {
   fmt.Println("connected")
 	conn := NewConnection(ws)
-  conn.Unicast("connected", conn.Channel, conn)
+  conns[conn.Channel] = conn
 	wsMsgHandler(conn)
 }
 
 func wsMsgHandler(conn *Connection) {
 	for {
-		var msg Message
-		err := websocket.JSON.Receive(conn.Conn, &msg)
+		var frame MessageFrame
+		err := websocket.JSON.Receive(conn.Conn, &frame)
 		if err != nil {
+      fmt.Println(err)
       onDisconnected(conn)
 			return
     }
-    fmt.Printf("Received: %s channel:[%s]\n", msg.Type, conn.Channel)
-    switch msg.DestType {
-    case DestTypeUnicast:
-      conns[msg.Dest].SendMessage(msg)
-    case DestTypeBroadcast:
-      broadcast(msg)
-    default:
-      broadcastInRoom(msg)
+
+    fmt.Printf("Received: %s from[%s]\n", frame.Type, conn.Channel)
+
+    if frame.Message.Type == TYPE_ENTER {
+      onEnter(conn, frame)
+    } else {
+      frame.Message.From = conn.Channel
+      switch frame.Type {
+      case DestTypeUnicast:
+        conns[frame.Dest].SendMessage(frame.Message, conn)
+      default:
+        broadcastRoom(frame.Message, frame.Dest, conn)
+      }
     }
 	}
 }
 
-func onEnter(conn *Connection, msg Message) {
-  fmt.Printf("channel[%s] entered. room:%s\n", conn.Channel, msg.Msg)
-  conn.EnterRoom(msg.Msg)
-  broadcastInRoom(msg)
+func onEnter(conn *Connection, frame MessageFrame) {
+  fmt.Printf("channel[%s] entered room[%s]\n", conn.Channel, frame.Dest)
+  conn.EnterRoom(frame.Dest)
+  broadcastRoom(frame.Message, frame.Dest, conn)
 }
 
 func onDisconnected(conn *Connection) {
   fmt.Printf("channel[%s] dicconnected\n", conn.Channel)
+  delete (conns, conn.Channel)
   msg := Message{
     Type: TYPE_LEAVE,
     Msg: conn.Channel,
     From: conn.Channel,
   }
-  broadcastInRoom(msg)
-  delete (conns, conn.Channel)
+  broadcastRoom(msg, conn.Room, conn)
 }
 
-func broadcast(msg Message) {
+func broadcastRoom(msg Message, room string, from *Connection) {
+  fmt.Printf("------ broadcast room:[%s] from:[%s] type[%s] --------\n", room, from.Channel, msg.Type)
   for _, conn := range conns {
-    conn.SendMessage(msg)
-  }
-}
-
-func broadcastInRoom(msg Message) {
-  for _, conn := range conns {
-    if conn.isJoiningRoom(msg.Dest) {
-      conn.SendMessage(msg)
+    if conn.IsJoiningRoom(room) {
+      conn.SendMessage(msg, from)
     }
   }
 }

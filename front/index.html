@@ -1,17 +1,28 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <title>WebRTC 1 to 1 handshake</title>
+  <head>
+    <meta charset="UTF-8">
+    <title>WebRTC 1 to 1 handshake</title>
+    <style>
+      .remote-video {
+      width: 480px;
+      height: 320px;
+      border: solid 1px black;
+      }
+    </style>
 </head>
 <body>
   <button type="button" onclick="stopVideo();">Stop video</button>
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <button type="button" id="connect">Connect</button>
   <button type="button" onclick="hangUp();">Hang Up</button>
   <br />
   <div>
-    <video id="remote-video" autoplay style="width: 480px; height: 180px; border: 1px solid black;"></video>
-    <video id="local-video" autoplay style="width: 240px; height: 180px; border: 1px solid black;"></video>
+    <div id="remote-videos">
+    </div>
+
+    <div class="local-video">
+      <video id="local-video" autoplay style="width: 240px; height: 180px; border: 1px solid black;"></video>
+    </div>
   </div>
 
   <p>
@@ -35,6 +46,7 @@
   </p>
 
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.0/jquery.min.js"></script>
+  <script type="text/javascript" src="connection.js"></script>
   <script type="text/javascript" src="socket.js"></script>
   <script type="text/javascript" src="index.js"></script>
 </body>
