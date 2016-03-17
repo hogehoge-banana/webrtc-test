@@ -11,8 +11,6 @@
   // ----------------- handshake --------------
   var textForSendSDP = document.getElementById('text-for-send-sdp');
   var textForSendICE = document.getElementById('text-for-send-ice');
-  var textToReceiveSDP = document.getElementById('text-for-receive-sdp');
-  var textToReceiveICE = document.getElementById('text-for-receive-ice');
   var iceSeparator = '------ ICE Candidate -------';
   var CR = String.fromCharCode(13);
   var myChannel = null;
@@ -25,7 +23,9 @@
 
     console.log('received type:' + type)
 
-    if (type === 'offer') {
+    if (type === 'enter') {
+      sendOffer(msg);
+    } else if (type === 'offer') {
       onOffer(msg);
     } else if (type === 'answer') {
       onAnswer(msg);
@@ -33,17 +33,15 @@
       onCandidate(msg);
     } else if (type === 'user dissconnected') {
       stop();
-    } else if (type === 'enter') {
-      sendOffer(msg);
     } else if (type === 'leave') {
       onLeave(msg);
     }
   });
 
-  // ---- UI ----
-  //
+  // logic
+
+  // -- start flow --
   // start local video
-  //
   function startVideo() {
     return new Promise(function (resolve, reject) {
       navigator.webkitGetUserMedia(
@@ -65,21 +63,11 @@
     });
   }
 
-  // stop local video
-  function stopVideo() {
-    localVideo.src = "";
-    localStream.stop();
-    localStream = null;
+  // pork to all
+  function enterRoom(){
+    var roomname = getRoomName();
+    ws.enter(roomname);
   }
-
-  function hangUp() {
-    console.log("Hang up.");
-    stop();
-  }
-
-  // logic
-
-  // -- start flow --
 
   // start the connection upon user request
   function sendOffer(data) {
@@ -94,8 +82,6 @@
     }, mediaConstraints);
   }
 
-  // -- start flow end --
-
   // -- on offer received flow --
 
   function onOffer(msg) {
@@ -104,13 +90,6 @@
     connection.peer.setRemoteDescription(new RTCSessionDescription(sdp));
     addConnection(connection);
     sendAnswer(msg);
-  }
-
-  function sendCandidate(id, candidate) {
-    var text = JSON.stringify(candidate);
-    textForSendICE.value = (textForSendICE.value + CR + iceSeparator + CR + text + CR);
-    textForSendICE.scrollTop = textForSendICE.scrollHeight;
-    ws.unicast(id, candidate.type, candidate)
   }
 
   function sendAnswer(evt) {
@@ -131,8 +110,7 @@
     var conn = getConnection(evt.From);
     conn.peer.setRemoteDescription(new RTCSessionDescription(data));
   }
-
-  // ---- on leave message ----
+  // handle disconnected
 
   function onLeave(msg) {
     console.log('remove connection:' + msg.From)
@@ -142,58 +120,8 @@
 
   // ----  utility ----
 
-  function sendSDP(id, sdp) {
-    var text = JSON.stringify(sdp);
-    textForSendSDP.value = text;
-    ws.unicast(id, sdp.type, sdp)
-  }
 
-
-  // stop the connection upon user request
-  function stop() {
-    peerConnection.close();
-    peerConnection = null;
-    peerStarted = false;
-  }
-
-
-  function onSDP() {
-    var text = textToReceiveSDP.value;
-    var evt = JSON.parse(text);
-    if (peerConnection) {
-      onAnswer(evt);
-    } else {
-      onOffer(evt);
-    }
-
-    textToReceiveSDP.value ="";
-  }
-
-
-  //--- multi ICE candidate ---
-  function onICE() {
-    var text = textToReceiveICE.value;
-    var arr = text.split(iceSeparator);
-    for (var i = 1, len = arr.length; i < len; i++) {
-      var evt = JSON.parse(arr[i]);
-      onCandidate(evt);
-    }
-
-    textToReceiveICE.value ="";
-  }
-
-  function onCandidate(msg) {
-    var evt = JSON.parse(msg.Msg);
-    var conn = getConnection(msg.From);
-
-    var candidate = new RTCIceCandidate({
-      sdpMLineIndex:evt.sdpMLineIndex,
-      sdpMid:evt.sdpMid,
-      candidate:evt.candidate});
-    conn.peer.addIceCandidate(candidate);
-  }
-
-  // ---------------------- connection handling -----------------------
+  // peer connection
   function prepareNewConnection(id) {
     var connection = new Connection(id);
     addConnection(connection);
@@ -242,10 +170,40 @@
     return connection;
   }
 
+  function sendCandidate(id, candidate) {
+    var text = JSON.stringify(candidate);
+    textForSendICE.value = (textForSendICE.value + CR + iceSeparator + CR + text + CR);
+    textForSendICE.scrollTop = textForSendICE.scrollHeight;
+    ws.unicast(id, candidate.type, candidate)
+  }
+
+  function sendSDP(id, sdp) {
+    var text = JSON.stringify(sdp);
+    textForSendSDP.value = text;
+    ws.unicast(id, sdp.type, sdp)
+  }
+
+  // stop the connection upon user request
+  function stop() {
+    peerConnection.close();
+    peerConnection = null;
+    peerStarted = false;
+  }
+
+  function onCandidate(msg) {
+    var evt = JSON.parse(msg.Msg);
+    var conn = getConnection(msg.From);
+
+    var candidate = new RTCIceCandidate({
+      sdpMLineIndex:evt.sdpMLineIndex,
+      sdpMid:evt.sdpMid,
+      candidate:evt.candidate});
+    conn.peer.addIceCandidate(candidate);
+  }
+
   function isLocalStreamReady() {
     return localStream != null;
   }
-
 
   function getRoomName() {
     var url   = location.href;
@@ -270,12 +228,19 @@
     return connections[id];
   }
 
-  function enterRoom(){
-    return ws.connect().then(function(){
-      var roomname = getRoomName();
-      ws.enter(roomname);
-    });
+
+  // stop local video
+  function stopVideo() {
+    localVideo.src = "";
+    localStream.stop();
+    localStream = null;
   }
+
+  function hangUp() {
+    console.log("Hang up.");
+    stop();
+  }
+
 
   startVideo().then(function(){
     enterRoom();
